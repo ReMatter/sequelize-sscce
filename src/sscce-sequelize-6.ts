@@ -1,4 +1,4 @@
-import { DataTypes, Model } from 'sequelize';
+import { DataTypes, Model, Op } from 'sequelize';
 import { createSequelize6Instance } from '../setup/create-sequelize-instance';
 import { expect } from 'chai';
 import sinon from 'sinon';
@@ -21,21 +21,42 @@ export async function run() {
     },
   });
 
-  class Foo extends Model {}
+  class Truck extends Model { }
 
-  Foo.init({
-    name: DataTypes.TEXT,
+  Truck.init({
+    truckId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV1, primaryKey: true },
+    centralizedCompanyId: DataTypes.UUID,
   }, {
     sequelize,
-    modelName: 'Foo',
+    modelName: 'Truck',
   });
+
+  class Attachable extends Model { }
+
+  Attachable.init({
+    attachableId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV1, primaryKey: true },
+    truckId: DataTypes.UUID,
+    s3Key: DataTypes.STRING,
+    centralizedCompanyId: DataTypes.UUID,
+  }, {
+    sequelize,
+    modelName: 'Attachable',
+  });
+
+  Truck.hasMany(Attachable, { foreignKey: 'truckId', as: 'attachables' });
 
   // You can use sinon and chai assertions directly in your SSCCE.
   const spy = sinon.spy();
-  sequelize.afterBulkSync(() => spy());
   await sequelize.sync({ force: true });
-  expect(spy).to.have.been.called;
 
-  console.log(await Foo.create({ name: 'TS foo' }));
-  expect(await Foo.count()).to.equal(1);
+  const truck = await Truck.create({ centralizedCompanyId: '62536467-7897-40fe-983e-7cc789c30ed3', attachables: [{ s3Key: 'test', centralizedCompanyId: '62536467-7897-40fe-983e-7cc789c30ed3' }] }, { include: ['attachables'] });
+
+  await Truck.findOne({ where: { truckId: truck.get('truckId'), centralizedCompanyId: '62536467-7897-40fe-983e-7cc789c30ed3' }, include: ['attachables'], logging(sql) {
+    spy(sql);
+  }, })
+  await Truck.findOne({ where: { [Op.and]: [{ truckId: truck.get('truckId') }, { centralizedCompanyId: '62536467-7897-40fe-983e-7cc789c30ed3' }]}, include: ['attachables'], logging(sql) {
+    spy(sql);
+  }, });
+
+  expect(spy.getCall(0).args[0]).to.equal(spy.getCall(1).args[0]);
 }
