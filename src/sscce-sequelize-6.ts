@@ -1,7 +1,5 @@
 import { DataTypes, Model } from 'sequelize';
 import { createSequelize6Instance } from '../setup/create-sequelize-instance';
-import { expect } from 'chai';
-import sinon from 'sinon';
 
 // if your issue is dialect specific, remove the dialects you don't need to test on.
 export const testingOnDialects = new Set(['mssql', 'sqlite', 'mysql', 'mariadb', 'postgres', 'postgres-native']);
@@ -21,21 +19,50 @@ export async function run() {
     },
   });
 
-  class Foo extends Model {}
+  // Boxes have many cats, a box may belong to an owner
 
-  Foo.init({
-    name: DataTypes.TEXT,
+  class Box extends Model { }
+
+  Box.init({
+    boxId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV1, primaryKey: true },
+    ownerId: DataTypes.UUID,
+    boxNumber: DataTypes.INTEGER,
   }, {
     sequelize,
-    modelName: 'Foo',
+    modelName: 'Box',
   });
 
-  // You can use sinon and chai assertions directly in your SSCCE.
-  const spy = sinon.spy();
-  sequelize.afterBulkSync(() => spy());
-  await sequelize.sync({ force: true });
-  expect(spy).to.have.been.called;
+  class Owner extends Model { }
 
-  console.log(await Foo.create({ name: 'TS foo' }));
-  expect(await Foo.count()).to.equal(1);
+  Owner.init({
+    ownerId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV1, primaryKey: true },
+    fullName: DataTypes.STRING,
+  }, {
+    sequelize,
+    modelName: 'Owner',
+  });
+
+  class Cat extends Model { }
+
+  Cat.init({
+    catId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV1, primaryKey: true },
+    boxId: DataTypes.UUID,
+    nickname: DataTypes.STRING,
+  }, {
+    sequelize,
+    modelName: 'Cat',
+  });
+
+  Box.hasMany(Cat, { foreignKey: 'boxId', as: 'cats' });
+  Box.belongsTo(Owner, { foreignKey: 'ownerId', as: 'owner' });
+
+
+  await sequelize.sync({ force: true });
+
+  await Box.create({ boxNumber: 1, cats: [{ nickname: 'whiskers' }, { nickname: 'lucky' }] }, { include: ['cats'] });
+  await Box.create({ boxNumber: 2, cats: [{ nickname: 'fluffy' }, { nickname: 'smudge' }] }, { include: ['cats'] });
+  await Box.create({ boxNumber: 3, cats: [{ nickname: 'angel' }, { nickname: 'lady' }], owner: { fullName: 'John Doe' } }, { include: ['cats', 'owner'] });
+
+
+  const boxes = await Box.findAll({ include: ['cats'], limit: 10, where: {'$owner.fullName$': 'John Doe'} });
 }
